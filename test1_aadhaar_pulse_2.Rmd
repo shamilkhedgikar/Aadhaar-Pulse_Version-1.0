@@ -1,0 +1,310 @@
+---
+title: "Aadhaar Pulse 1.0"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    theme: spacelab
+    horizontal_layout: fill
+    vertical_layout: scroll
+    social: menu
+  
+---
+
+PDS+MNREGS Infra {data-navmenu="Nagpur District" data-icon="fa-list"}
+=====================================  
+
+```{r setup, include=FALSE}
+library(leaflet)
+library(d3scatter)
+library(flexdashboard)
+library(crosstalk)
+library(tidyverse)
+library(lubridate)
+library(sf)
+library(sp)
+library(rgdal)
+library(ggplot2)
+library(RColorBrewer)
+library(colorRamps)
+library(knitr)
+library(plotly)
+library(sf)
+taluka_extent <- readOGR(".", "Nagpur_district_villages_PDS_and_NREGA", verbose = FALSE)
+district_extent <- readOGR(".", "Nagpur_district", verbose = FALSE)
+village_extent <- readOGR(".","Malewada_area_final", verbose = FALSE)
+village_habitat <- readOGR(".","Malewada_habitation_final", verbose = FALSE)
+lines_one <- readOGR(".", "Hub_lines_Malewada_PDS_shop", verbose = FALSE)
+lines_two <- readOGR(".", "Hub_lines_Malewada_Banks", verbose = FALSE)
+village_intersect <- readOGR(".", "Nagpur_intersection_villages_lu", verbose = FALSE)
+pds_shops <- sf::st_read("Bhiwapur_PDS_shops.shp")
+taluka_base <- readOGR(".", "Bhiwapur_Taluka_Final", verbose = FALSE)
+hub_lines_pds <- readOGR(".", "Hub_lines_Malewada_PDS_shop", verbose = FALSE)
+hub_lines_nrega <- readOGR(".", "Hub_lines_Malewada_Banks", verbose = FALSE)
+malewada_benificiaries <- readOGR(".", "Random_points_full_Malewada", verbose = FALSE)
+village_intersect@data$marg_pop <- round(100*((village_intersect@data$DH_TotalSC + village_intersect@data$DH_TotalST)/village_intersect@data$DH_TotalPo), digits = 0)
+village_intersect@data$marg_pop_ab <- ((village_intersect@data$DH_TotalSC + village_intersect@data$DH_TotalST)/village_intersect@data$DH_TotalPo)
+village_intersect@data$pop_den <- round((village_intersect@data$DH_TotalPo/(0.01*village_intersect@data$DH_Area.Ha)), digits = 2)
+sd_one<- SharedData$new(village_intersect)
+sd_df <- SharedData$new(village_intersect@data, group = sd_one$groupName())
+sd_two<- SharedData$new(pds_shops)
+sd_three <- SharedData$new(malewada_benificiaries)
+sd_three_df <- SharedData$new(malewada_benificiaries@data, group = sd_three$groupName())
+```
+
+Inputs {.sidebar}
+-----------------------------------------------------------------------
+
+```{r}
+filter_slider("DH_TotalPo", "Total Population", sd_df, step = 1000, ~DH_TotalPo, ticks = TRUE, animate = FALSE)
+filter_slider("DH_Area.Ha", "Total Area (in Ha)", sd_df, step = 1000, ~DH_Area.Ha, ticks = TRUE, animate = FALSE)
+filter_slider("DH_TotalSCST", "Percentage of Marginalized population", sd_df, step = 5, ~marg_pop, ticks = TRUE, animate = FALSE)
+filter_checkbox("SDTName", "Filter by Taluka", sd_df, ~SDTNAME)
+```
+
+---
+
+**Database:**  
+Aadhaar Pulse is a spatially-explicit cyber architecture for welfare data streams. In this demo, we look at two welfare data streams, MNREGS and PDS in the District of Nagpur and analyze the infrastructure and impact of welfare schemes in a sample village. We evaluate the overlap between the welfare projects for the village of Malewada in taluka Bhiwapur to understand the profile of beneficiaries common to both schemes in the village. The evaluation has been done here is part of an ongoing partnership between the Indian School of Business and the Office of the Divisional
+Commissioner of Nagpur, Government of Maharashtra.
+
+Designed and Developed by: Shamil Shirish Khedgikar
+
+Row {data-height=650}
+-----------------------------------------------------------------------
+
+```{r}
+library(leaflet)
+pal <- colorFactor(c("cyan","chocolate2","darkorchid","dodgerblue","burlywood2","chocolate2","antiquewhite1","darkseagreen1","gold","ivory3","lightblue","darkorange1","firebrick1"), domain = c("Narkhed", "Katol", "Kalameshwar", "Savner", "Parseoni","Ramtek","Mauda","Kamptee", "Nagpur (Rural)", "Hingna","Umred","Kuhi","Bhiwapur"))
+leaflet(height = "100%" ,width = "100%" ,data = sd_one, options = leafletOptions(preferCanvas = TRUE))%>% addProviderTiles(providers$OpenStreetMap, options = providerTileOptions(updateWhenZooming = FALSE, updateWhenIdle = TRUE), "Open Street Map") %>% addProviderTiles(providers$Stamen.TonerBackground, options = providerTileOptions(updateWhenZooming = FALSE, updateWhenIdle = TRUE), group = "Monochrome Basemap") %>% addPolygons(data = sd_one, color = ~pal(SDTNAME), popup = ~paste(
+  "Village Name", village_intersect@data$VILNAME11., "<br>", 
+  "Total Area (in Hectares):", village_intersect@data$DH_Area.Ha, "<br>",
+  "Total Households:", village_intersect@data$DH_TotalHH, "<br>",
+  "Total Male Population:", village_intersect@data$DH_MalePop, "<br>",
+  "Total Female Population:", village_intersect@data$DH_FemaleP, "<br>",
+  "Total Population Density(People/Sqkm):", village_intersect@data$pop_den, "<br>"), fillOpacity = 0.7, stroke = FALSE) %>% addPolygons(data = district_extent, stroke = TRUE, color = "black", weight = 3, fillOpacity = 0.1, fill = FALSE, smoothFactor = 0.5)
+```
+
+Row {.tabset .tabset-fade} 
+-----------------------------------------------------------------------
+
+### Demography (Remoteness vs Marginalized Population Percent )
+
+```{r}
+d3scatter(sd_df, x = ~DH_StTownD, y = ~marg_pop, color = ~SDTNAME, x_label = "Distance to Nearest Statutory Town (kms)", y_label = "Percentage of Marginalized Population (%)")
+```
+
+### MNREGS (Job Cards vs Funds Transferred)
+
+```{r}
+d3scatter(sd_df, x = ~n_Total.Jo, y = ~n_Total.Fu, color = ~SDTNAME, x_label = "Total Active Job Cards (2019)", y_label = "Total Wage Funds Transferred (In Rs.)")
+```
+
+### MNREGS (Average Transfers vs Percent Marginalized Population)
+
+```{r}
+d3scatter(sd_df, x = ~n_Average, y = ~marg_pop, color = ~SDTNAME, x_label = "Average Transfers", y_label = "Total Wage Funds Transferred (In Rs.)")
+```
+
+### PDS (Total Households vs PDS Shops)
+
+```{r}
+d3scatter(sd_df, x = ~DH_TotalHH, y = ~PDS_sh, color = ~SDTNAME, x_label = "Total Active Job Cards (2019)", y_label = "Total Wage Funds Transferred (In Rs.)")
+```
+
+Land Utilization {data-navmenu="Nagpur District" data-icon="fa-list"}
+=====================================  
+
+Inputs {.sidebar}
+-----------------------------------------------------------------------
+
+```{r}
+filter_slider("DH_Area.Ha", "Total Area (in Ha)", sd_df, step = 5, ~DH_Area.Ha, ticks = TRUE, animate = FALSE)
+filter_slider("DH_TotalPo", "Total Population", sd_df, step = 1000, ~DH_TotalPo, ticks = TRUE, animate = FALSE)
+filter_slider("DH_TotalSCST", "Percentage of Marginalized population", sd_df, step = 5, ~marg_pop, ticks = TRUE, animate = FALSE)
+filter_checkbox("SDTName", "Filter by Taluka", sd_df, ~SDTNAME)
+```
+
+---
+
+**Database:**  
+Aadhaar Pulse is a spatially-explicit cyber architecture for welfare data streams. In this demo, we look at two welfare data streams, MNREGS and PDS in the District of Nagpur and analyze the infrastructure and impact of welfare schemes in a sample village. We evaluate the overlap between the welfare projects for the village of Malewada in taluka Bhiwapur to understand the profile of beneficiaries common to both schemes in the village. The evaluation has been done here is part of an ongoing partnership between the Indian School of Business and the Office of the Divisional
+Commissioner of Nagpur, Government of Maharashtra.
+
+Designed and Developed by: Shamil Shirish Khedgikar
+
+Row {data-height=600}
+-----------------------------------------------------------------------
+
+```{r}
+library(leaflet)
+pal_land <- colorNumeric("YlOrRd", domain = village_intersect@data$DH_Area.un)
+leaflet(height = "100%" ,width = "100%" ,data = sd_one, options = leafletOptions(preferCanvas = TRUE)) %>% addProviderTiles(providers$OpenTopoMap, options = providerTileOptions(updateWhenZooming = FALSE, updateWhenIdle = TRUE), group = "Openstreet Topo Map") %>% addPolygons(data = district_extent, stroke = TRUE, color = "black", weight = 1, fillOpacity = 0.2, fill = FALSE, smoothFactor = 0.5) %>% addPolygons(data = sd_one, color = ~pal_land(DH_Area.un), popup = ~paste(
+  "Village Name", village_intersect@data$VILNAME11., "<br>", 
+  "Total Area (in Hectares):", village_intersect@data$DH_Area.Ha, "<br>",
+  "Total Households:", village_intersect@data$DH_TotalHH, "<br>",
+  "Total Male Population:", village_intersect@data$DH_MalePop, "<br>",
+  "Total Female Population:", village_intersect@data$DH_FemaleP, "<br>",
+  "Total Population Density(People/Sqkm):", village_intersect@data$pop_den, "<br>"), fillOpacity = 0.7, stroke = FALSE) %>% addPolygons(data = district_extent, stroke = TRUE, color = "black", weight = 3, fillOpacity = 0.5, fill = FALSE, smoothFactor = 0.5)
+```
+
+Row {.tabset .tabset-fade}
+-----------------------------------------------------------------------
+### Total Area of Village
+```{r}
+gg <- ggplot(data=sd_df, aes(x=SDTNAME, y=DH_Area.Ha, fill=SDTNAME)) + geom_bar(stat="identity") + xlab("District") + ylab("Total Area")
+ggplotly(gg)
+```
+
+### Irrigated Land in Village
+```{r}
+gg2 <- ggplot(data=sd_df, aes(x=SDTNAME, y=DH_Area.Ir, fill=SDTNAME)) + geom_bar(stat="identity") + ggtitle("Total Area by Taluka") +
+  xlab("District") + ylab("Total Area")
+ggplotly(gg2)
+```
+
+### Current Fallow Land
+```{r}
+gg3 <- ggplot(data=sd_df, aes(x=SDTNAME, y=DH_Current, fill=SDTNAME)) + geom_bar(stat="identity") + ggtitle("Total Area by Taluka") +
+  xlab("District") + ylab("Total Area")
+ggplotly(gg3)
+```
+
+
+Taluka at a Glance: Infrastructre {data-navmenu="Bhiwapur Taluka" data-icon="fa-list"}
+=====================================  
+    
+Column {data-width=500}
+-------------------------------------
+    
+### Railway Stations
+    
+```{r out.width = "100%", out.height = "100%"}
+include_graphics("Railway_Station.png") 
+```
+
+### Canals 
+
+```{r out.width = "100%", out.height = "100%"}
+include_graphics("Water Canals.png") 
+```
+
+Column {data-width=500}
+-------------------------------------
+   
+### Hospitals
+
+```{r out.width = "100%", out.height = "100%"}
+include_graphics("Hospitals.png")
+```   
+ 
+### Family Welfare Centers
+    
+```{r out.width = "100%", out.height = "100%"}
+include_graphics("Family_Welfare.png")
+```
+
+Taluka at a Glance: PDS Distribution {data-navmenu="Bhiwapur Taluka" data-icon="fa-list"}
+=====================================  
+    
+Column {data-width=500}
+-------------------------------------
+    
+### PDS Distribution: Wheat
+    
+```{r}
+leaflet(options = leafletOptions(preferCanvas = TRUE)) %>%
+addProviderTiles(providers$CartoDB.Positron, options = providerTileOptions(updateWhenZooming = FALSE, updateWhenIdle = TRUE))%>%
+addCircleMarkers(data = pds_shops, lng = ~Longitude, lat = ~Latitude, color = "#f03b20", radius = ~sqrt(pds_shops$Jn_Wheat.T)/5, stroke = FALSE, fillOpacity = 1, group = "June Distribution")%>% addCircleMarkers(data = pds_shops, lng = ~Longitude, lat = ~Latitude, color = "#43a2ca", radius = ~sqrt(pds_shops$Jl_Wheat.T)/5, stroke = FALSE, fillOpacity = 1, group = "July Distribution")%>%
+addCircleMarkers(data = pds_shops, lng = ~Longitude, lat = ~Latitude, color = "#31a354", radius = ~sqrt(pds_shops$Au_Wheat.T)/5, stroke = FALSE, fillOpacity = 1, group = "August Distribution")%>%addLayersControl(overlayGroups = c("June Distribution", "July Distribution","August_Distribution"), options = layersControlOptions(collapsed = FALSE))
+```
+
+### PDS Distribution: Rice
+
+```{r}
+leaflet(options = leafletOptions(preferCanvas = TRUE)) %>%
+addProviderTiles(providers$CartoDB.Positron, options = providerTileOptions(updateWhenZooming = FALSE, updateWhenIdle = TRUE))%>%
+addCircleMarkers(data = pds_shops, lng = ~Longitude, lat = ~Latitude, color = "#f03b20", radius = ~sqrt(pds_shops$Jn_Rice.To)/5, stroke = FALSE, fillOpacity = 1, group = "June Distribution")%>% addCircleMarkers(data = pds_shops, lng = ~Longitude, lat = ~Latitude, color = "#43a2ca", radius = ~sqrt(pds_shops$Jl_Rice.To)/5, stroke = FALSE, fillOpacity = 1, group = "July Distribution")%>%
+addCircleMarkers(data = pds_shops, lng = ~Longitude, lat = ~Latitude, color = "#31a354", radius = ~sqrt(pds_shops$Au_Rice.To)/5, stroke = FALSE, fillOpacity = 1, group = "August Distribution")%>%addLayersControl(overlayGroups = c("June Distribution", "July Distribution","August_Distribution"), options = layersControlOptions(collapsed = FALSE))
+```
+
+Column {data-width=500}
+-------------------------------------
+   
+### PDS Distribution: Sugar
+
+```{r}
+leaflet(options = leafletOptions(preferCanvas = TRUE)) %>%
+addProviderTiles(providers$CartoDB.Positron, options = providerTileOptions(updateWhenZooming = FALSE, updateWhenIdle = TRUE))%>%
+addCircleMarkers(data = pds_shops, lng = ~Longitude, lat = ~Latitude, color = "#f03b20", radius = ~sqrt(pds_shops$Jn_Sugar.T)/5, stroke = FALSE, fillOpacity = 1, group = "June Distribution")%>% addCircleMarkers(data = pds_shops, lng = ~Longitude, lat = ~Latitude, color = "#43a2ca", radius = ~sqrt(pds_shops$Jl_Sugar.T)/5, stroke = FALSE, fillOpacity = 1, group = "July Distribution")%>%
+addCircleMarkers(data = pds_shops, lng = ~Longitude, lat = ~Latitude, color = "#31a354", radius = ~sqrt(pds_shops$Au_Sugar.T)/5, stroke = FALSE, fillOpacity = 1, group = "August Distribution")%>%addLayersControl(overlayGroups = c("June Distribution", "July Distribution","August_Distribution"), options = layersControlOptions(collapsed = FALSE))
+```   
+ 
+### PDS Distribution: Dal
+    
+```{r}
+leaflet(options = leafletOptions(preferCanvas = TRUE)) %>%
+addProviderTiles(providers$CartoDB.Positron, options = providerTileOptions(updateWhenZooming = FALSE, updateWhenIdle = TRUE))%>%
+addCircleMarkers(data = pds_shops, lng = ~Longitude, lat = ~Latitude, color = "#f03b20", radius = ~sqrt(pds_shops$Jn_Dal.Tot)/5, stroke = FALSE, fillOpacity = 1, group = "June Distribution")%>% addCircleMarkers(data = pds_shops, lng = ~Longitude, lat = ~Latitude, color = "#43a2ca", radius = ~sqrt(pds_shops$Jl_Dal.Tot)/5, stroke = FALSE, fillOpacity = 1, group = "July Distribution")%>%
+addCircleMarkers(data = pds_shops, lng = ~Longitude, lat = ~Latitude, color = "#31a354", radius = ~sqrt(pds_shops$Au_Dal.Tot)/5, stroke = FALSE, fillOpacity = 1, group = "August Distribution")%>%addLayersControl(overlayGroups = c("June Distribution", "July Distribution","August_Distribution"), options = layersControlOptions(collapsed = FALSE))
+```
+
+Malewada: (PDS + MNREGS) {data-orientation=rows}
+=====================================     
+
+Column {data-width=500}
+-------------------------------------
+
+### Malewada Context
+
+```{r out.width = "100%", out.height = "100%"}
+include_graphics("0.JPG") 
+```
+
+### Malewada Habitation and Households
+
+```{r}
+include_graphics("1_new.JPG") 
+```
+Column {data-width=500}
+-------------------------------------
+   
+### Malewada No Scheme Data
+
+```{r out.width = "100%", out.height = "100%"}
+include_graphics("2.JPG") 
+```
+
+### Malewada PDS Scheme Only
+
+```{r out.width = "100%", out.height = "100%"}
+include_graphics("3.JPG") 
+```
+
+Malewada: Networks  {data-orientation=rows}
+=====================================     
+
+Column {data-width=500}
+-------------------------------------
+
+### Malewada PDS Both Schemes
+
+```{r out.width = "100%", out.height = "100%"}
+include_graphics("4.JPG") 
+```
+
+### Malewada PDS Hub Network
+
+```{r}
+include_graphics("5.JPG") 
+```
+Column {data-width=500}
+-------------------------------------
+   
+### Malewada Benificiary Bank Network
+
+```{r out.width = "100%", out.height = "100%"}
+include_graphics("6.JPG") 
+```
+
+
+
